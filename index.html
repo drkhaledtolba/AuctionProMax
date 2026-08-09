@@ -65,6 +65,19 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
 .name-field input{background:none;border:none;color:var(--chalk);font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;width:100%;outline:none}
 .name-field.a{border-left:3px solid var(--rare)}
 .name-field.b{border-left:3px solid var(--gold)}
+.mode-toggle{display:flex;gap:8px}
+.mode-btn{flex:1;padding:12px 8px;border-radius:12px;background:var(--night3);border:1px solid rgba(255,255,255,.1);
+  font-family:'Oswald',sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.02em;color:var(--dim);
+  transition:all .15s ease}
+.mode-btn.on{background:rgba(255,201,74,.14);border-color:var(--gold);color:var(--gold)}
+.diff-row{display:flex;gap:8px}
+.diff-btn{flex:1;padding:10px 6px;border-radius:10px;background:var(--night3);border:1px solid rgba(255,255,255,.1);
+  font-family:'Oswald',sans-serif;font-weight:600;font-size:12px;text-transform:uppercase;color:var(--dim);transition:all .15s ease}
+.diff-btn.on{background:rgba(79,195,247,.14);border-color:var(--rare);color:var(--rare)}
+.diff-btn[data-diff="hard"].on{background:rgba(255,93,93,.14);border-color:var(--lose);color:var(--lose)}
+.diff-btn[data-diff="easy"].on{background:rgba(47,211,122,.14);border-color:var(--winA);color:var(--winA)}
+.name-field.b.ai-locked{opacity:.6}
+.name-field.b.ai-locked input{pointer-events:none}
 .rules{margin-top:22px;text-align:left;font-size:12.5px;color:var(--dim);line-height:1.7;background:rgba(255,255,255,.03);border-radius:12px;padding:14px 16px}
 .rules b{color:var(--chalk)}
 .leaderboard{width:100%;background:rgba(255,201,74,.06);border:1px solid rgba(255,201,74,.2);border-radius:12px;padding:12px 14px;margin-top:18px;text-align:left}
@@ -159,6 +172,12 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
 .incr-row .btn{flex:1;padding:13px 6px;font-size:13px}
 .bal-mini{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:0 2px}
 .bal-mini b{color:var(--chalk)}
+.ai-thinking{text-align:center;font-family:'Oswald',sans-serif;font-weight:600;font-size:12.5px;color:var(--rare);letter-spacing:.02em}
+.ai-thinking .dots span{animation:blink 1.2s infinite;opacity:0}
+.ai-thinking .dots span:nth-child(1){animation-delay:0s}
+.ai-thinking .dots span:nth-child(2){animation-delay:.2s}
+.ai-thinking .dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:0}50%{opacity:1}}
 
 .result-flash{width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0}
 .result-flash .rf-title{font-size:26px;color:var(--gold)}
@@ -189,6 +208,8 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
   border-radius:10px;padding:9px 12px;margin-bottom:12px;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
 .splayer.selectable{cursor:pointer;background:rgba(255,201,74,.1);border-radius:6px;padding-left:4px}
 .splayer.selectable:active{background:rgba(255,201,74,.22)}
+.ai-card-status{font-size:10.5px;color:var(--dim);text-align:center;font-family:'Oswald',sans-serif;font-weight:600;
+  padding:8px 4px;letter-spacing:.02em}
 
 .kickoff-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center}
 .kickoff-wrap p{color:var(--dim);font-size:13px;max-width:280px;line-height:1.6}
@@ -241,9 +262,18 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
       <h1 class="brand">Auction<br>Pro Max<small>Bid&nbsp;&middot;&nbsp;Build&nbsp;&middot;&nbsp;Battle</small></h1>
 
       <div class="setup">
+        <div class="mode-toggle" id="modeToggle">
+          <button class="mode-btn on" id="modePvp" data-mode="pvp">👥 1v1 Pass &amp; Play</button>
+          <button class="mode-btn" id="modeAi" data-mode="ai">🤖 Vs CPU</button>
+        </div>
+        <div class="diff-row hidden" id="diffRow">
+          <button class="diff-btn" data-diff="easy">Easy</button>
+          <button class="diff-btn on" data-diff="normal">Normal</button>
+          <button class="diff-btn" data-diff="hard">Hard</button>
+        </div>
         <div class="name-row">
           <div class="name-field a"><div class="eyebrow">Team A</div><input id="nameA" maxlength="16" placeholder="Team A"></div>
-          <div class="name-field b"><div class="eyebrow">Team B</div><input id="nameB" maxlength="16" placeholder="Team B"></div>
+          <div class="name-field b" id="nameFieldB"><div class="eyebrow" id="nameFieldBLabel">Team B</div><input id="nameB" maxlength="16" placeholder="Team B"></div>
         </div>
         <button class="btn btn-gold btn-block" id="btnStart">Start Auction</button>
         <div class="leaderboard hidden" id="leaderboard"></div>
@@ -353,7 +383,8 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
       <div class="turn-flag" id="turnFlag">Waiting on <b>Team A</b></div>
       <div class="bidnum"><span id="bidAmount">10</span><small>M</small></div>
       <div class="startprice" id="startPriceNote">Starting price 10M</div>
-      <div class="incr-row">
+      <div class="ai-thinking hidden" id="aiThinking">🤖 CPU is thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+      <div class="incr-row" id="incrRow">
         <button class="btn btn-ghost" id="inc1">+1M</button>
         <button class="btn btn-ghost" id="inc5">+5M</button>
         <button class="btn btn-ghost" id="inc10">+10M</button>
@@ -421,8 +452,10 @@ function freshState(){
     round: 1,
     used: new Set(),
     raritySequence: buildRaritySequence(),
-    A: {name:'Team A', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false},
-    B: {name:'Team B', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false},
+    mode: uiMode, // 'pvp' or 'ai'
+    aiDifficulty: uiDifficulty,
+    A: {name:'Team A', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false, isAI:false},
+    B: {name:'Team B', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false, isAI:false},
     card:null, compCard:null, position:null,
     currentBid:0, highBidder:null, turn:null, startPrice:0,
     pendingAction:null
@@ -466,6 +499,39 @@ function startPriceFor(card){
 function rarityClass(r){ return r==='Legendary'?'legend': r==='Epic'?'epic':'rare'; }
 
 /* ---------- START SCREEN ---------- */
+let uiMode = 'pvp';
+let uiDifficulty = 'normal';
+
+$('modePvp').addEventListener('click', ()=>{
+  uiMode = 'pvp';
+  $('modePvp').classList.add('on'); $('modeAi').classList.remove('on');
+  $('diffRow').classList.add('hidden');
+  $('nameFieldB').classList.remove('ai-locked');
+  $('nameFieldBLabel').textContent = 'Team B';
+  $('nameB').placeholder = 'Team B';
+  $('nameB').disabled = false;
+});
+$('modeAi').addEventListener('click', ()=>{
+  uiMode = 'ai';
+  $('modeAi').classList.add('on'); $('modePvp').classList.remove('on');
+  $('diffRow').classList.remove('hidden');
+  $('nameFieldB').classList.add('ai-locked');
+  $('nameFieldBLabel').textContent = 'Team B (CPU)';
+  const label = uiDifficulty[0].toUpperCase()+uiDifficulty.slice(1);
+  $('nameB').value = 'CPU ('+label+')';
+  $('nameB').placeholder = 'CPU';
+  $('nameB').disabled = true;
+});
+document.querySelectorAll('.diff-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    uiDifficulty = btn.dataset.diff;
+    const label = uiDifficulty[0].toUpperCase()+uiDifficulty.slice(1);
+    $('nameB').value = 'CPU ('+label+')';
+  });
+});
+
 function renderLeaderboard(){
   const board = $('leaderboard');
   const names = Object.keys(session.wins);
@@ -485,7 +551,13 @@ renderLeaderboard();
 $('btnStart').addEventListener('click', ()=>{
   state = freshState();
   state.A.name = $('nameA').value.trim() || 'Team A';
-  state.B.name = $('nameB').value.trim() || 'Team B';
+  if(state.mode==='ai'){
+    const label = state.aiDifficulty[0].toUpperCase()+state.aiDifficulty.slice(1);
+    state.B.name = 'CPU ('+label+')';
+    state.B.isAI = true;
+  } else {
+    state.B.name = $('nameB').value.trim() || 'Team B';
+  }
   state.A.hasSwapCard = !!session.swapCard[state.A.name];
   state.B.hasSwapCard = !!session.swapCard[state.B.name];
   $('pitchNameA').textContent = state.A.name;
@@ -581,6 +653,12 @@ $('btnStartAuction').addEventListener('click', ()=>{
 
 function otherKey(k){ return k==='A'?'B':'A'; }
 
+const AI_SETTINGS = {
+  easy:   {maxMultiplier:1.15, surrenderChance:0.30, increments:[1]},
+  normal: {maxMultiplier:1.55, surrenderChance:0.14, increments:[1,5]},
+  hard:   {maxMultiplier:2.1,  surrenderChance:0.05, increments:[5,10]}
+};
+
 function updateBidUI(){
   const t = state.turn;
   $('turnFlag').innerHTML = `Waiting on <b>${state[t].name}</b>`;
@@ -588,23 +666,32 @@ function updateBidUI(){
   $('startPriceNote').textContent = `Starting price ${state.startPrice}M`;
   $('balMiniA').textContent = `${state.A.name}: ${state.A.balance}M`;
   $('balMiniB').textContent = `${state.B.name}: ${state.B.balance}M`;
+
+  if(state[t].isAI){
+    $('incrRow').classList.add('hidden');
+    $('btnSurrender').classList.add('hidden');
+    $('aiThinking').classList.remove('hidden');
+    const delay = 500 + Math.floor(Math.random()*450);
+    setTimeout(()=>{ if(state && state.turn===t && state[t].isAI) performAiTurn(); }, delay);
+    return;
+  }
+  $('incrRow').classList.remove('hidden');
+  $('btnSurrender').classList.remove('hidden');
+  $('aiThinking').classList.add('hidden');
   const bal = state[t].balance;
   [['inc1',1],['inc5',5],['inc10',10]].forEach(([id,inc])=>{
     $(id).disabled = (state.currentBid+inc) > bal;
   });
 }
 
-['inc1','inc5','inc10'].forEach((id,i)=>{
-  const inc=[1,5,10][i];
-  $(id).addEventListener('click', ()=>{
-    state.currentBid += inc;
-    state.highBidder = state.turn;
-    state.turn = otherKey(state.turn);
-    updateBidUI();
-  });
-});
+function raiseBid(inc){
+  state.currentBid += inc;
+  state.highBidder = state.turn;
+  state.turn = otherKey(state.turn);
+  updateBidUI();
+}
 
-$('btnSurrender').addEventListener('click', ()=>{
+function doSurrender(){
   let winnerKey, loserKey, price;
   if(state.highBidder===null){
     winnerKey = otherKey(state.turn);
@@ -616,7 +703,46 @@ $('btnSurrender').addEventListener('click', ()=>{
     price = state.currentBid;
   }
   resolveRound(winnerKey, loserKey, price);
+}
+
+function performAiTurn(){
+  const t = state.turn;
+  const team = state[t];
+  const cfg = AI_SETTINGS[state.aiDifficulty] || AI_SETTINGS.normal;
+  const roundsLeft = 11 - state.round; // rounds still to come after this one
+  const reserve = Math.max(0, roundsLeft * 4);
+  let willingness = Math.round(state.startPrice * cfg.maxMultiplier);
+  // hard AI pushes harder for elite legendary cards
+  if(state.card.rarity==='Legendary' && state.card.rating>=93 && state.aiDifficulty==='hard'){
+    willingness = Math.round(willingness * 1.2);
+  }
+  const softCap = Math.max(state.startPrice, team.balance - reserve);
+  willingness = Math.min(willingness, softCap, team.balance);
+
+  const randomBail = Math.random() < cfg.surrenderChance;
+  const overCeiling = state.currentBid >= willingness;
+
+  if(overCeiling || randomBail || team.balance <= state.currentBid){
+    doSurrender();
+    return;
+  }
+
+  // pick the largest increment that stays within willingness and balance
+  const options = cfg.increments.filter(inc => (state.currentBid+inc) <= willingness && (state.currentBid+inc) <= team.balance);
+  if(!options.length){
+    doSurrender();
+    return;
+  }
+  const inc = options[Math.floor(Math.random()*options.length)];
+  raiseBid(inc);
+}
+
+['inc1','inc5','inc10'].forEach((id,i)=>{
+  const inc=[1,5,10][i];
+  $(id).addEventListener('click', ()=> raiseBid(inc));
 });
+
+$('btnSurrender').addEventListener('click', doSurrender);
 
 function resolveRound(winnerKey, loserKey, price){
   const winTeam = state[winnerKey];
@@ -683,6 +809,15 @@ function finishAuction(){
   fillEndList('endListB','B');
   renderCardActions();
   $('endBalances').innerHTML = `${state.A.name}: <b>${state.A.balance}M</b> left &nbsp;&middot;&nbsp; ${state.B.name}: <b>${state.B.balance}M</b> left`;
+
+  if(state.A.isAI || state.B.isAI){
+    setTimeout(()=>{
+      aiEndCardRoutine();
+      fillEndList('endListA','A');
+      fillEndList('endListB','B');
+      renderCardActions();
+    }, 650);
+  }
 }
 
 function fillEndList(elId, key){
@@ -719,6 +854,18 @@ function renderCardActions(){
     const team = state[key];
     const el = $('cardActions'+key);
     el.innerHTML='';
+
+    if(team.isAI){
+      const status = document.createElement('div');
+      status.className = 'ai-card-status';
+      const lines = [];
+      if(team.noRiskUsed) lines.push('🎲 No Risk No Fun used');
+      if(team.hasSwapCard) lines.push(team.swapUsed ? '🔁 Swap Card used' : '🔁 Swap Card ready');
+      status.textContent = lines.length ? lines.join(' · ') : '🤖 CPU deciding...';
+      el.appendChild(status);
+      return;
+    }
+
     const noRiskBtn = document.createElement('button');
     noRiskBtn.className = 'btn btn-norisk';
     noRiskBtn.textContent = team.noRiskUsed ? 'No Risk No Fun — used' : '🎲 No Risk No Fun';
@@ -733,6 +880,52 @@ function renderCardActions(){
       swapBtn.disabled = team.swapUsed;
       swapBtn.addEventListener('click', ()=> startSwap(key));
       el.appendChild(swapBtn);
+    }
+  });
+}
+
+function aiEndCardRoutine(){
+  ['A','B'].forEach(key=>{
+    const team = state[key];
+    if(!team.isAI) return;
+
+    if(!team.noRiskUsed){
+      let weakest=null, weakestPos=null, weakestIdx=null;
+      ['GK','DEF','MID','ST'].forEach(pos=>{
+        team.squad[pos].forEach((p,idx)=>{
+          if(!weakest || p.rating<weakest.rating){ weakest=p; weakestPos=pos; weakestIdx=idx; }
+        });
+      });
+      if(weakest){
+        const pool = PLAYERS.filter(p=>p.pos===weakestPos && !state.used.has(p.name) && p.name!==weakest.name);
+        if(pool.length){
+          const newPlayer = pool[Math.floor(Math.random()*pool.length)];
+          state.used.add(newPlayer.name);
+          team.squad[weakestPos][weakestIdx] = newPlayer;
+        }
+      }
+      team.noRiskUsed = true;
+    }
+
+    if(team.hasSwapCard && !team.swapUsed){
+      const oppKey = otherKey(key);
+      const opp = state[oppKey];
+      let bestGain=0, myPos=null, myIdx=null, oppIdx=null;
+      ['GK','DEF','MID','ST'].forEach(pos=>{
+        team.squad[pos].forEach((p,idx)=>{
+          opp.squad[pos].forEach((op,oidx)=>{
+            const gain = op.rating - p.rating;
+            if(gain>bestGain){ bestGain=gain; myPos=pos; myIdx=idx; oppIdx=oidx; }
+          });
+        });
+      });
+      if(myPos!==null && bestGain>0){
+        const myPlayer = team.squad[myPos][myIdx];
+        const oppPlayer = opp.squad[myPos][oppIdx];
+        team.squad[myPos][myIdx] = oppPlayer;
+        opp.squad[myPos][oppIdx] = myPlayer;
+      }
+      team.swapUsed = true;
     }
   });
 }
