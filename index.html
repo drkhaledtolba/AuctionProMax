@@ -67,6 +67,12 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
 .name-field.b{border-left:3px solid var(--gold)}
 .rules{margin-top:22px;text-align:left;font-size:12.5px;color:var(--dim);line-height:1.7;background:rgba(255,255,255,.03);border-radius:12px;padding:14px 16px}
 .rules b{color:var(--chalk)}
+.leaderboard{width:100%;background:rgba(255,201,74,.06);border:1px solid rgba(255,201,74,.2);border-radius:12px;padding:12px 14px;margin-top:18px;text-align:left}
+.lb-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;flex-wrap:wrap}
+.lb-name{font-weight:700;flex:1}
+.lb-wins{color:var(--gold);font-family:'Oswald',sans-serif;font-weight:600}
+.streak-fire{font-size:11px}
+.swap-ready{font-size:10.5px;color:var(--rare)}
 
 /* ---------- MAIN GAME ---------- */
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 12px}
@@ -175,6 +181,14 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
 .splayer .sp-rate{font-family:'Anton',sans-serif;font-size:12px}
 .bal-final{text-align:center;font-size:11.5px;color:var(--dim);margin-top:8px}
 .bal-final b{color:var(--gold)}
+.card-actions{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.card-actions .btn{padding:9px 6px;font-size:10.5px;letter-spacing:.02em}
+.btn-norisk{background:rgba(79,195,247,.14);color:var(--rare);border:1px solid rgba(79,195,247,.35)}
+.btn-swap{background:rgba(255,201,74,.14);color:var(--gold);border:1px solid rgba(255,201,74,.4)}
+.action-hint{text-align:center;font-size:12px;color:var(--gold);background:rgba(255,201,74,.08);border:1px solid rgba(255,201,74,.25);
+  border-radius:10px;padding:9px 12px;margin-bottom:12px;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
+.splayer.selectable{cursor:pointer;background:rgba(255,201,74,.1);border-radius:6px;padding-left:4px}
+.splayer.selectable:active{background:rgba(255,201,74,.22)}
 
 .kickoff-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center}
 .kickoff-wrap p{color:var(--dim);font-size:13px;max-width:280px;line-height:1.6}
@@ -232,10 +246,12 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
           <div class="name-field b"><div class="eyebrow">Team B</div><input id="nameB" maxlength="16" placeholder="Team B"></div>
         </div>
         <button class="btn btn-gold btn-block" id="btnStart">Start Auction</button>
+        <div class="leaderboard hidden" id="leaderboard"></div>
         <div class="rules">
           Both teams start with <b>200M</b>. 11 rounds fill a locked <b>4-3-3</b> — GK, then 4×DEF, 3×MID, 3×ST.
-          Every card is <b>Epic or Legendary</b>, 50/50. Win the bid and it costs you; lose it and you get a
+          Every card is <b>Epic or Legendary</b>, guaranteed roughly 50/50 across the 11 rounds. Win the bid and it costs you; lose it and you get a
           <b>free random player</b> instead. After 11 rounds, kick off an instant match sim — final scoreline decided by squad strength.
+          Win 2 in a row with the same team name and you'll earn a <b>Swap Card</b> for next time.
         </div>
       </div>
     </div>
@@ -268,9 +284,14 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
       <div class="eyebrow" style="margin-top:4px">Both 4-3-3s are locked in</div>
     </div>
     <div class="squad-list">
-      <div class="squad-col a"><h3 id="endNameA">Team A</h3><div id="endListA"></div></div>
-      <div class="squad-col b"><h3 id="endNameB">Team B</h3><div id="endListB"></div></div>
+      <div class="squad-col a"><h3 id="endNameA">Team A</h3><div id="endListA"></div>
+        <div class="card-actions" id="cardActionsA"></div>
+      </div>
+      <div class="squad-col b"><h3 id="endNameB">Team B</h3><div id="endListB"></div>
+        <div class="card-actions" id="cardActionsB"></div>
+      </div>
     </div>
+    <div class="action-hint hidden" id="actionHint"></div>
     <div class="bal-final" id="endBalances"></div>
     <div class="kickoff-wrap">
       <svg class="ball" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#F2EFE6"/>
@@ -296,6 +317,7 @@ button{font-family:inherit;border:none;cursor:pointer;background:none;color:inhe
         <div class="score-team"><div class="stname" id="matchNameB">Team B</div></div>
       </div>
       <div class="win-tag" id="winTag">Team A wins</div>
+      <div id="streakNote"></div>
       <div class="rating-compare">
         <div>Squad rating<b id="ratingA">–</b></div>
         <div>Squad rating<b id="ratingB">–</b></div>
@@ -378,15 +400,32 @@ const POS_LABEL = {GK:'Goalkeeper',DEF:'Defender',MID:'Midfielder',ST:'Striker'}
 const FORMATION = {GK:1,DEF:4,MID:3,ST:3};
 
 let state = null;
+let session = { wins:{}, streak:{}, swapCard:{} };
+
+function buildRaritySequence(){
+  const legendaryFirst = Math.random()<0.5;
+  const legendaryCount = legendaryFirst ? 6 : 5;
+  const epicCount = 11 - legendaryCount;
+  const seq = [];
+  for(let i=0;i<legendaryCount;i++) seq.push('Legendary');
+  for(let i=0;i<epicCount;i++) seq.push('Epic');
+  for(let i=seq.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [seq[i],seq[j]] = [seq[j],seq[i]];
+  }
+  return seq;
+}
 
 function freshState(){
   return {
     round: 1,
     used: new Set(),
-    A: {name:'Team A', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}},
-    B: {name:'Team B', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}},
+    raritySequence: buildRaritySequence(),
+    A: {name:'Team A', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false},
+    B: {name:'Team B', balance:200, squad:{GK:[],DEF:[],MID:[],ST:[]}, noRiskUsed:false, swapUsed:false, hasSwapCard:false},
     card:null, compCard:null, position:null,
-    currentBid:0, highBidder:null, turn:null, startPrice:0
+    currentBid:0, highBidder:null, turn:null, startPrice:0,
+    pendingAction:null
   };
 }
 
@@ -394,8 +433,7 @@ function poolFor(position, rarities){
   return PLAYERS.filter(p => p.pos===position && rarities.includes(p.rarity) && !state.used.has(p.name));
 }
 
-function drawMain(position){
-  const wantRare = Math.random()<0.5 ? 'Legendary' : 'Epic';
+function drawMain(position, wantRare){
   let pool = poolFor(position,[wantRare]);
   if(!pool.length) pool = poolFor(position, wantRare==='Epic'?['Legendary']:['Epic']);
   const pick = pool[Math.floor(Math.random()*pool.length)];
@@ -428,10 +466,28 @@ function startPriceFor(card){
 function rarityClass(r){ return r==='Legendary'?'legend': r==='Epic'?'epic':'rare'; }
 
 /* ---------- START SCREEN ---------- */
+function renderLeaderboard(){
+  const board = $('leaderboard');
+  const names = Object.keys(session.wins);
+  if(!names.length){ board.innerHTML=''; board.classList.add('hidden'); return; }
+  board.classList.remove('hidden');
+  names.sort((a,b)=>session.wins[b]-session.wins[a]);
+  board.innerHTML = '<div class="eyebrow" style="margin-bottom:6px">Session Wins</div>' +
+    names.map(n=>{
+      const streak = session.streak[n]||0;
+      const streakTag = streak>=2 ? ' <span class="streak-fire">🔥x'+streak+'</span>' : '';
+      const swapTag = session.swapCard[n] ? ' <span class="swap-ready">🔁 Swap Card ready</span>' : '';
+      return `<div class="lb-row"><span class="lb-name">${n}</span><span class="lb-wins">${session.wins[n]} win${session.wins[n]===1?'':'s'}</span>${streakTag}${swapTag}</div>`;
+    }).join('');
+}
+renderLeaderboard();
+
 $('btnStart').addEventListener('click', ()=>{
   state = freshState();
   state.A.name = $('nameA').value.trim() || 'Team A';
   state.B.name = $('nameB').value.trim() || 'Team B';
+  state.A.hasSwapCard = !!session.swapCard[state.A.name];
+  state.B.hasSwapCard = !!session.swapCard[state.B.name];
   $('pitchNameA').textContent = state.A.name;
   $('pitchNameB').textContent = state.B.name;
   goScreen('screen-game');
@@ -490,7 +546,8 @@ $('btnReveal').addEventListener('click', ()=>{
 
 function openAuctionModal(){
   const position = state.position;
-  const card = drawMain(position);
+  const wantRare = state.raritySequence[state.round-1];
+  const card = drawMain(position, wantRare);
   state.card = card;
   state.startPrice = startPriceFor(card);
   state.currentBid = state.startPrice;
@@ -620,8 +677,11 @@ function finishAuction(){
   goScreen('screen-end');
   $('endNameA').textContent = state.A.name;
   $('endNameB').textContent = state.B.name;
+  state.pendingAction = null;
+  $('actionHint').classList.add('hidden');
   fillEndList('endListA','A');
   fillEndList('endListB','B');
+  renderCardActions();
   $('endBalances').innerHTML = `${state.A.name}: <b>${state.A.balance}M</b> left &nbsp;&middot;&nbsp; ${state.B.name}: <b>${state.B.balance}M</b> left`;
 }
 
@@ -629,12 +689,120 @@ function fillEndList(elId, key){
   const el = $(elId); el.innerHTML='';
   const team = state[key];
   ['GK','DEF','MID','ST'].forEach(pos=>{
-    team.squad[pos].forEach(p=>{
+    team.squad[pos].forEach((p,idx)=>{
       const row = document.createElement('div'); row.className='splayer';
+      row.dataset.team = key; row.dataset.pos = pos; row.dataset.idx = idx;
       row.innerHTML = `<span class="sp-pos">${p.pos}</span><span class="sp-name">${p.name}</span><span class="sp-rate">${p.rating}</span>`;
+      const pa = state.pendingAction;
+      if(pa && isRowSelectable(pa, key, pos)){
+        row.classList.add('selectable');
+        row.addEventListener('click', ()=> handleRowSelect(key, pos, idx));
+      }
       el.appendChild(row);
     });
   });
+}
+
+function isRowSelectable(pa, key, pos){
+  if(pa.type==='norisk'){
+    return pa.team===key;
+  }
+  if(pa.type==='swap'){
+    if(pa.step===1) return pa.team===key;
+    if(pa.step===2) return key!==pa.team && pos===pa.myPos;
+  }
+  return false;
+}
+
+function renderCardActions(){
+  ['A','B'].forEach(key=>{
+    const team = state[key];
+    const el = $('cardActions'+key);
+    el.innerHTML='';
+    const noRiskBtn = document.createElement('button');
+    noRiskBtn.className = 'btn btn-norisk';
+    noRiskBtn.textContent = team.noRiskUsed ? 'No Risk No Fun — used' : '🎲 No Risk No Fun';
+    noRiskBtn.disabled = team.noRiskUsed;
+    noRiskBtn.addEventListener('click', ()=> startNoRisk(key));
+    el.appendChild(noRiskBtn);
+
+    if(team.hasSwapCard){
+      const swapBtn = document.createElement('button');
+      swapBtn.className = 'btn btn-swap';
+      swapBtn.textContent = team.swapUsed ? 'Swap Card — used' : '🔁 Swap Card';
+      swapBtn.disabled = team.swapUsed;
+      swapBtn.addEventListener('click', ()=> startSwap(key));
+      el.appendChild(swapBtn);
+    }
+  });
+}
+
+function startNoRisk(key){
+  if(state[key].noRiskUsed) return;
+  state.pendingAction = {type:'norisk', team:key};
+  $('actionHint').textContent = `${state[key].name}: tap one of your own players to swap for a random replacement.`;
+  $('actionHint').classList.remove('hidden');
+  fillEndList('endListA','A');
+  fillEndList('endListB','B');
+}
+
+function startSwap(key){
+  if(state[key].swapUsed) return;
+  state.pendingAction = {type:'swap', team:key, step:1};
+  $('actionHint').textContent = `${state[key].name}: tap one of your own players to put up for the swap.`;
+  $('actionHint').classList.remove('hidden');
+  fillEndList('endListA','A');
+  fillEndList('endListB','B');
+}
+
+function handleRowSelect(key, pos, idx){
+  const pa = state.pendingAction;
+  if(!pa) return;
+
+  if(pa.type==='norisk'){
+    const team = state[key];
+    const oldPlayer = team.squad[pos][idx];
+    const pool = PLAYERS.filter(p => p.pos===pos && !state.used.has(p.name) && p.name!==oldPlayer.name);
+    if(!pool.length){ cancelPendingAction(); return; }
+    const newPlayer = pool[Math.floor(Math.random()*pool.length)];
+    state.used.add(newPlayer.name);
+    team.squad[pos][idx] = newPlayer;
+    team.noRiskUsed = true;
+    state.pendingAction = null;
+    $('actionHint').textContent = `${team.name} swapped ${oldPlayer.name} for ${newPlayer.name} (${newPlayer.rarity})!`;
+    fillEndList('endListA','A'); fillEndList('endListB','B'); renderCardActions();
+    return;
+  }
+
+  if(pa.type==='swap'){
+    if(pa.step===1){
+      pa.myPos = pos; pa.myIdx = idx; pa.step = 2;
+      const opponent = key==='A' ? state.B.name : state.A.name;
+      $('actionHint').textContent = `Now tap ${opponent}'s ${pos} player to complete the trade.`;
+      fillEndList('endListA','A'); fillEndList('endListB','B');
+      return;
+    }
+    if(pa.step===2){
+      const myTeam = state[pa.team];
+      const oppKey = key;
+      const oppTeam = state[oppKey];
+      const myPlayer = myTeam.squad[pa.myPos][pa.myIdx];
+      const oppPlayer = oppTeam.squad[pos][idx];
+      myTeam.squad[pa.myPos][pa.myIdx] = oppPlayer;
+      oppTeam.squad[pos][idx] = myPlayer;
+      myTeam.swapUsed = true;
+      state.pendingAction = null;
+      $('actionHint').textContent = `${myTeam.name} traded ${myPlayer.name} for ${oppTeam.name}'s ${oppPlayer.name}!`;
+      fillEndList('endListA','A'); fillEndList('endListB','B'); renderCardActions();
+      return;
+    }
+  }
+}
+
+function cancelPendingAction(){
+  state.pendingAction = null;
+  $('actionHint').classList.add('hidden');
+  fillEndList('endListA','A'); fillEndList('endListB','B');
 }
 
 /* ---------- MATCH SIMULATION ---------- */
@@ -658,6 +826,13 @@ function weightedScorerPool(key){
   return pool;
 }
 
+function randomGoals(){
+  const weights = [22,30,26,14,8]; // goals: 0,1,2,3,4 — weighted like real match totals
+  let r = Math.random()*100, acc=0;
+  for(let i=0;i<weights.length;i++){ acc+=weights[i]; if(r<acc) return i; }
+  return 4;
+}
+
 function simulateMatch(){
   const ratingA = squadRating('A');
   const ratingB = squadRating('B');
@@ -666,8 +841,13 @@ function simulateMatch(){
   else winnerKey = ratingA>ratingB ? 'A':'B';
   const loserKey = otherKey(winnerKey);
 
-  const winnerGoals = 1 + Math.floor(Math.random()*4); // 1-4
-  const loserGoals = Math.floor(Math.random()*winnerGoals); // 0..winnerGoals-1
+  let winnerGoals = randomGoals();
+  let loserGoals = randomGoals();
+  if(loserGoals >= winnerGoals){
+    // higher-rated team must win outright, but keep the margin realistic (usually just +1)
+    winnerGoals = loserGoals + (Math.random()<0.75 ? 1 : 2);
+  }
+  winnerGoals = Math.min(winnerGoals, 6);
 
   const events=[];
   const winPool = weightedScorerPool(winnerKey);
@@ -701,6 +881,20 @@ function simulateMatch(){
   $('ratingA').innerHTML = `<b>${ratingA}</b>`;
   $('ratingB').innerHTML = `<b>${ratingB}</b>`;
 
+  // session tracking: wins, consecutive-win streaks, and swap-card rewards
+  const winnerName = state[winnerKey].name;
+  const loserName = state[loserKey].name;
+  session.wins[winnerName] = (session.wins[winnerName]||0) + 1;
+  session.streak[winnerName] = (session.streak[winnerName]||0) + 1;
+  session.streak[loserName] = 0;
+  let streakNote = '';
+  if(session.streak[winnerName] >= 2){
+    session.swapCard[winnerName] = true;
+    streakNote = `<div class="win-tag" style="color:var(--rare);margin-top:6px">🔁 ${winnerName} is on a ${session.streak[winnerName]}-game streak — Swap Card earned for the next auction!</div>`;
+  }
+  const streakEl = $('streakNote');
+  if(streakEl){ streakEl.innerHTML = streakNote; }
+
   const listEl = $('goalList'); listEl.innerHTML='';
   if(events.length===0){
     listEl.innerHTML = '<div class="goal-row"><span class="gscorer">No goals scored — a tense stalemate.</span></div>';
@@ -716,6 +910,7 @@ function simulateMatch(){
 }
 
 $('btnRematch').addEventListener('click', ()=>{
+  renderLeaderboard();
   goScreen('screen-start');
 });
 
